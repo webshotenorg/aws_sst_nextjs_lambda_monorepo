@@ -10,20 +10,43 @@ export default $config({
     };
   },
   async run() {
-    const storage = new sst.aws.Bucket("MyBucket");
-    const api = new sst.aws.Function("MyApi", {
-      url: true,
-      link: [storage],
-      handler: "packages/functions/src/api.handler",
+    const table = new sst.aws.Dynamo("MyTable", {
+      fields: {
+        userId: "string",
+        noteId: "string",
+      },
+      primaryIndex: { hashKey: "userId", rangeKey: "noteId" },
     });
+
+    const func = new sst.aws.Function("MyFunction", {
+      url: false,
+      handler: "packages/functions/src/api.handler",
+      permissions: [
+        {
+          actions: ["dynamodb:Query"],
+          resources: [table.arn],
+        },
+      ],
+      link: [table],
+    });
+
+    const api = new sst.aws.ApiGatewayV2("MyApi", {
+      cors: {
+        allowMethods: ["GET"],
+        allowOrigins: ["*"],
+      },
+    });
+
+    api.route("GET /", func.arn);
+
     new sst.aws.Nextjs("MyWeb", {
       path: "packages/web",
-      link: [storage, api],
+      link: [api],
     });
 
     return {
-      MyBucket: storage,
       MyApi: api,
+      MyTable: table,
     };
   },
 });
